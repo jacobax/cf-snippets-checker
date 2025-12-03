@@ -32,7 +32,7 @@
 ### 2. 部署 Worker
 
 1.  在 Cloudflare Dashboard 中，进入 **Workers & Pages** 并创建一个新的 Worker。
-2.  进入 Worker 编辑界面，将 [项目代码文件](/src/index.js) 中的所有代码粘贴进去，替换默认代码。
+2.  进入 Worker 编辑界面，将 [项目代码文件](/worker.js) 中的所有代码粘贴进去，替换默认代码。
 3.  点击 **保存并部署**。
 
 ### 3. 配置环境变量 (最重要)
