@@ -1,35 +1,23 @@
 /**
- * Cloudflare Snippets Monitor
- * Features: Auto Pagination, Multi-Token, Batch Processing, Cron Trigger, Telegram Notification
+ * Cloudflare Snippets Monitor V3.0 (最终稳定版)
+ * Features: Auto Pagination, Multi-Token, Cron Trigger, Telegram Notification
  * Author: Gemini
  */
 
 export default {
-  // 1. HTTP 请求处理 (浏览器访问)
   async fetch(request, env, ctx) {
-    // 执行检测逻辑
     const { allResults, logMessages } = await processAllTokens(env);
-
-    // 生成 HTML 页面
     const html = generateHtml(allResults, logMessages);
-
-    return new Response(html, {
-      headers: { "Content-Type": "text/html;charset=UTF-8" }
-    });
+    return new Response(html, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
   },
 
-  // 2. Cron 定时任务处理
   async scheduled(event, env, ctx) {
-    // 执行检测逻辑
     const { allResults } = await processAllTokens(env);
-
-    // 筛选出已开通的域名
     const enabledDomains = allResults.filter(r => r.enabled);
 
-    // 如果发现有已开通的域名，且配置了 TG 信息，则发送通知
     if (enabledDomains.length > 0 && env.TG_BOT_TOKEN && env.TG_CHAT_ID) {
       const msgPromise = sendTelegramNotification(env, enabledDomains);
-      ctx.waitUntil(msgPromise); // 确保 Worker 在发送完成前不退出
+      ctx.waitUntil(msgPromise);
     } else {
       console.log("无新开通域名或未配置 TG 通知，跳过推送。");
     }
@@ -52,12 +40,9 @@ async function processAllTokens(env) {
 
   for (const token of tokens) {
     try {
-      // A. 获取该 Token 下的所有 Zone
       const zones = await fetchAllZones(token);
-      
       if (zones.length === 0) continue;
 
-      // B. 分批检测 Snippets (并发控制 10)
       const BATCH_SIZE = 10;
       for (let i = 0; i < zones.length; i += BATCH_SIZE) {
         const batch = zones.slice(i, i + BATCH_SIZE);
@@ -100,7 +85,7 @@ async function fetchAllZones(token) {
 }
 
 /**
- * 辅助：检测单个 Zone 的 Snippets 状态
+ * 辅助：最终稳定版 checkSnippets (基于您提供的状态码精准判断)
  */
 async function checkSnippets(zone, token) {
   const result = {
@@ -116,17 +101,51 @@ async function checkSnippets(zone, token) {
     const resp = await fetch(`https://api.cloudflare.com/client/v4/zones/${zone.id}/snippets/rules`, {
       headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
     });
-    const data = await resp.json();
-    if (data.success === true) {
-      result.enabled = true;
-      result.msg = "✅ 已开通";
-    } else {
-      result.enabled = false;
-      result.msg = "未开通";
+
+    const status = resp.status;
+    
+    // 1. 状态码 200 (Success)
+    if (status === 200) {
+      const data = await resp.json();
+      result.enabled = data.success === true;
+      result.msg = result.enabled ? "✅ 已开通" : "❌ 状态异常";
+      
+    } 
+    
+    // 2. 状态码 403 (Token 权限不足) -> 您的测试结果
+    else if (status === 403) {
+      result.msg = `⚠️ Token权限不足 (请添加 'Snippets:Read')`; 
+      
+    } 
+    
+    // 3. 状态码 400 (功能未授权/需升级) -> 您的测试结果
+    else if (status === 400) {
+      result.msg = "❌ 未开通 (需升级/等待)";
     }
+    
+    // 4. 状态码 404 (接口不存在)
+    else if (status === 404) {
+      result.msg = "❌ 未开放 (接口不存在)";
+    }
+
+    // 5. 其他错误
+    else {
+        // 尝试解析错误信息，否则显示HTTP状态码
+        let data = null;
+        try {
+            data = await resp.clone().json();
+        } catch(e) { /* ignore */ }
+        
+        const msg = (data && data.errors && data.errors[0]) 
+            ? data.errors[0].message 
+            : `Http ${status}`;
+        result.msg = `❌ 其他错误: ${msg}`;
+    }
+
   } catch (e) {
-    result.msg = "⚠️ API 错误";
+    result.msg = "⚠️ 脚本请求失败";
   }
+  
   return result;
 }
 
@@ -134,10 +153,10 @@ async function checkSnippets(zone, token) {
  * 辅助：发送 Telegram 通知
  */
 async function sendTelegramNotification(env, domains) {
+  // ... (unchanged) ...
   const token = env.TG_BOT_TOKEN;
   const chatId = env.TG_CHAT_ID;
 
-  // 构建消息内容
   let text = `🎉 *Snippet 功能已开通检测通知* 🎉\n\n发现以下域名已获得 Snippets 权限：\n`;
   
   domains.forEach(d => {
@@ -164,7 +183,7 @@ async function sendTelegramNotification(env, domains) {
 }
 
 /**
- * 辅助：生成 HTML 页面
+ * 辅助：生成 HTML 页面 (已包含显示 r.msg 的修复)
  */
 function generateHtml(results, logs) {
   results.sort((a, b) => (b.enabled === a.enabled) ? 0 : (a.enabled ? -1 : 1));
@@ -188,7 +207,7 @@ function generateHtml(results, logs) {
                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
                已开通
              </span>`
-          : `<span class="text-gray-400">未开通</span>`
+          : `<span class="text-xs text-gray-500">${r.msg}</span>` // 显示准确的 msg
         }
       </td>
     </tr>
