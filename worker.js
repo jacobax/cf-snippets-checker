@@ -1,7 +1,6 @@
 /**
  * Cloudflare Snippets Monitor V3.0 (最终稳定版)
  * Features: Auto Pagination, Multi-Token, Cron Trigger, Telegram Notification
- * Author: Gemini
  */
 
 export default {
@@ -98,31 +97,31 @@ async function checkSnippets(zone, token) {
   };
 
   try {
-    const resp = await fetch(`https://api.cloudflare.com/client/v4/zones/${zone.id}/snippets/rules`, {
+    const resp = await fetch(`https://api.cloudflare.com/client/v4/zones/${zone.id}/snippets/snippet_rules`, {
       headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
     });
 
     const status = resp.status;
-    
+
     // 1. 状态码 200 (Success)
     if (status === 200) {
       const data = await resp.json();
       result.enabled = data.success === true;
       result.msg = result.enabled ? "✅ 已开通" : "❌ 状态异常";
-      
+
     } 
-    
+
     // 2. 状态码 403 (Token 权限不足) -> 您的测试结果
     else if (status === 403) {
       result.msg = `⚠️ Token权限不足 (请添加 'Snippets:Read')`; 
-      
+
     } 
-    
+
     // 3. 状态码 400 (功能未授权/需升级) -> 您的测试结果
     else if (status === 400) {
       result.msg = "❌ 未开通 (需升级/等待)";
     }
-    
+
     // 4. 状态码 404 (接口不存在)
     else if (status === 404) {
       result.msg = "❌ 未开放 (接口不存在)";
@@ -135,7 +134,7 @@ async function checkSnippets(zone, token) {
         try {
             data = await resp.clone().json();
         } catch(e) { /* ignore */ }
-        
+
         const msg = (data && data.errors && data.errors[0]) 
             ? data.errors[0].message 
             : `Http ${status}`;
@@ -145,7 +144,7 @@ async function checkSnippets(zone, token) {
   } catch (e) {
     result.msg = "⚠️ 脚本请求失败";
   }
-  
+
   return result;
 }
 
@@ -158,15 +157,15 @@ async function sendTelegramNotification(env, domains) {
   const chatId = env.TG_CHAT_ID;
 
   let text = `🎉 *Snippet 功能已开通检测通知* 🎉\n\n发现以下域名已获得 Snippets 权限：\n`;
-  
+
   domains.forEach(d => {
-    text += `\n🌍 *${d.name}* \n👤 账号: \`${d.accountName}\`\n`;
+    text += `\n🌍 *\( {d.name}* \n👤 账号: \` \){d.accountName}\`\n`;
   });
-  
+
   text += `\n📅 时间: ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})}`;
 
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  
+
   try {
     await fetch(url, {
       method: "POST",
