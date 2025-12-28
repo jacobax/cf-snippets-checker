@@ -39,7 +39,10 @@
 
 > **如何获取 Telegram ID:** 搜索 Bot `@userinfobot` 点击 Start 即可获取您的 ID。
 
-### 4. 设置定时任务 (Triggers)
+### 4. 设置 KV 空间（用于判断是否有新开通）
+创建 worker KV 空间，名字随你意，添加 KEY “enabled_domains”，内容留空。worker中绑定 KV 变量名为 “KV”，选择刚创建的 KV 空间。
+
+### 5. 设置定时任务 (Triggers)
 
 如果您希望全自动运行检测：
 
