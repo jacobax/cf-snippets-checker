@@ -12,14 +12,28 @@ export default {
 
   async scheduled(event, env, ctx) {
     const { allResults } = await processAllTokens(env);
-    const enabledDomains = allResults.filter(r => r.enabled);
+    const enabled = allResults.filter(r => r.enabled);
 
-    if (enabledDomains.length > 0 && env.TG_BOT_TOKEN && env.TG_CHAT_ID) {
-      const msgPromise = sendTelegramNotification(env, enabledDomains);
+    // 从 KV 加载之前已开通的域名列表
+    const previousJson = await env.KV.get('enabled_domains');
+    const previous = previousJson ? JSON.parse(previousJson) : [];
+    const prevSet = new Set(previous);
+
+    // 计算新增开通域名
+    const newEnabled = enabled.filter(d => !prevSet.has(d.name));
+
+    console.log(`Detected enabled domains: ${enabled.length}, new enabled: ${newEnabled.length}`);
+
+    if (newEnabled.length > 0 && env.TG_BOT_TOKEN && env.TG_CHAT_ID) {
+      const msgPromise = sendTelegramNotification(env, newEnabled, enabled);
       ctx.waitUntil(msgPromise);
     } else {
-      console.log("无新开通域名或未配置 TG 通知，跳过推送。");
+      console.log("无新增开通域名或未配置 TG 通知，跳过推送。");
     }
+
+    // 更新 KV 中的已开通域名列表
+    const currentNames = enabled.map(d => d.name);
+    ctx.waitUntil(env.KV.put('enabled_domains', JSON.stringify(currentNames)));
   }
 };
 
@@ -151,23 +165,36 @@ async function checkSnippets(zone, token) {
 /**
  * 辅助：发送 Telegram 通知
  */
-async function sendTelegramNotification(env, domains) {
-  // ... (unchanged) ...
+async function sendTelegramNotification(env, newDomains, allDomains) {
   const token = env.TG_BOT_TOKEN;
   const chatId = env.TG_CHAT_ID;
 
-  let text = `🎉 *Snippet 功能已开通检测通知* 🎉\n\n发现以下域名已获得 Snippets 权限：\n`;
+  let text = '🎉 *Snippet 功能已开通检测通知* 🎉\n\n本次新增开通域名：\n';
 
-  domains.forEach(d => {
-    text += `\n🌍 *\( {d.name}* \n👤 账号: \` \){d.accountName}\`\n`;
-  });
+  if (newDomains.length === 0) {
+    text += '无\n';
+  } else {
+    newDomains.forEach(d => {
+      text += '\n🌍 *' + d.name + '* \n👤 账号: `' + d.accountName + '`\n';
+    });
+  }
 
-  text += `\n📅 时间: ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})}`;
+  text += '\n所有已开通域名：\n';
 
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  if (allDomains.length === 0) {
+    text += '无\n';
+  } else {
+    allDomains.forEach(d => {
+      text += '\n🌍 *' + d.name + '* \n👤 账号: `' + d.accountName + '`\n';
+    });
+  }
+
+  text += '\n📅 时间: ' + new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'});
+
+  const url = 'https://api.telegram.org/bot' + token + '/sendMessage';
 
   try {
-    await fetch(url, {
+    const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -176,6 +203,7 @@ async function sendTelegramNotification(env, domains) {
         parse_mode: "Markdown"
       })
     });
+    console.log('Telegram send response:', await response.text());
   } catch (e) {
     console.error("Telegram 推送失败", e);
   }
